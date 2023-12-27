@@ -96,7 +96,7 @@ def main(
         ret, frame = cap.read()
         if not ret:
             break
-        frame = torch.from_numpy(cv2.cvtColor(cap.read()[1], cv2.COLOR_BGR2RGB)).permute(2, 0, 1) / 255
+        frame = torch.from_numpy(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)).permute(2, 0, 1) / 255
         output_image = cv2.cvtColor(np.clip((stream(frame) * 255).permute(1, 2, 0).numpy(), 0, 255).astype(np.uint8),
                                     cv2.COLOR_RGB2BGR)
         out.write(output_image)
