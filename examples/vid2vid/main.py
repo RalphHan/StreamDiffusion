@@ -59,6 +59,7 @@ def main(
 
     video_info = read_video(input)
     video = video_info[0]
+    video /= 255
     fps = video_info[2]["video_fps"]
     height = int(video.shape[1] * scale)
     width = int(video.shape[2] * scale)
@@ -86,17 +87,17 @@ def main(
         num_inference_steps=50,
     )
 
-    video_result = torch.zeros(video.shape[0], height, width, 3)
+    #video_result = torch.zeros(video.shape[0], height, width, 3)
 
     for _ in range(stream.batch_size):
-        stream(image=video[0].permute(2, 0, 1)/255)
+        stream(image=video[0].permute(2, 0, 1))
 
     for i in tqdm(range(video.shape[0])):
-        output_image = stream(video[i].permute(2, 0, 1)/255)
-        video_result[i] = output_image.permute(1, 2, 0)
+        output_image = stream(video[i].permute(2, 0, 1))
+        video[i] = output_image.permute(1, 2, 0)
 
-    video_result = video_result * 255
-    write_video(output, video_result[2:], fps=fps)
+    video *= 255
+    write_video(output, video[2:], fps=fps)
 
 
 if __name__ == "__main__":
