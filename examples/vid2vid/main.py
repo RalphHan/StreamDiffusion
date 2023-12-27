@@ -3,7 +3,9 @@ import sys
 from typing import Literal, Dict, Optional
 
 import fire
+import numpy as np
 import torch
+import cv2
 from torchvision.io import read_video, write_video
 from tqdm import tqdm
 
@@ -15,18 +17,17 @@ CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 
 
 def main(
-    input: str,
-    output: str = os.path.join(CURRENT_DIR, "..", "..", "images", "outputs", "output.mp4"),
-    model_id: str = "KBlueLeaf/kohaku-v2.1",
-    lora_dict: Optional[Dict[str, float]] = None,
-    prompt: str = "1girl with brown dog ears, thick frame glasses",
-    scale: float = 1.0,
-    acceleration: Literal["none", "xformers", "tensorrt"] = "xformers",
-    use_denoising_batch: bool = True,
-    enable_similar_image_filter: bool = True,
-    seed: int = 2,
+        input: str,
+        output: str = os.path.join(CURRENT_DIR, "..", "..", "images", "outputs", "output.mp4"),
+        model_id: str = "KBlueLeaf/kohaku-v2.1",
+        lora_dict: Optional[Dict[str, float]] = None,
+        prompt: str = "1girl with brown dog ears, thick frame glasses",
+        scale: float = 1.0,
+        acceleration: Literal["none", "xformers", "tensorrt"] = "xformers",
+        use_denoising_batch: bool = True,
+        enable_similar_image_filter: bool = True,
+        seed: int = 2,
 ):
-
     """
     Process for generating images based on a prompt using a specified model.
 
@@ -56,13 +57,10 @@ def main(
     seed : int, optional
         The seed, by default 2. if -1, use random seed.
     """
-
-    video_info = read_video(input)
-    video = video_info[0]
-    video /= 255
-    fps = video_info[2]["video_fps"]
-    height = int(video.shape[1] * scale)
-    width = int(video.shape[2] * scale)
+    cap = cv2.VideoCapture(input)
+    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    fps = cap.get(cv2.CAP_PROP_FPS)
 
     stream = StreamDiffusionWrapper(
         model_id_or_path=model_id,
@@ -87,17 +85,27 @@ def main(
         num_inference_steps=50,
     )
 
-    #video_result = torch.zeros(video.shape[0], height, width, 3)
-
+    # video_result = torch.zeros(video.shape[0], height, width, 3)
+    frame = torch.from_numpy(cv2.cvtColor(cap.read()[1], cv2.COLOR_BGR2RGB)).permute(2, 0, 1) / 255
     for _ in range(stream.batch_size):
-        stream(image=video[0].permute(2, 0, 1))
+        stream(image=frame)
+    out = cv2.VideoWriter(output, cv2.VideoWriter_fourcc(*'mp4v'), fps, (width, height))
 
-    for i in tqdm(range(video.shape[0])):
-        output_image = stream(video[i].permute(2, 0, 1))
-        video[i] = output_image.permute(1, 2, 0)
+    cnt = 0
+    while cap.isOpened():
+        ret, frame = cap.read()
+        if not ret:
+            break
+        frame = torch.from_numpy(cv2.cvtColor(cap.read()[1], cv2.COLOR_BGR2RGB)).permute(2, 0, 1) / 255
+        output_image = cv2.cvtColor(np.clip((stream(frame) * 255).permute(1, 2, 0).numpy(), 0, 255).astype(np.uint8),
+                                    cv2.COLOR_RGB2BGR)
+        out.write(output_image)
+        cnt += 1
+        if cnt % 100 == 0:
+            print(cnt)
 
-    video *= 255
-    write_video(output, video[2:], fps=fps)
+    cap.release()
+    out.release()
 
 
 if __name__ == "__main__":
